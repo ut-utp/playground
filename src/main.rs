@@ -47,6 +47,7 @@ fn a_block(a: [Bit; 4], b: [Bit; 4]) -> [Bit; 12] {
 // The other way:
 
 
+use core::cell::RefCell;
 use core::cell::Cell;
 use core::fmt::Display;
 use core::marker::PhantomData;
@@ -70,12 +71,12 @@ enum OpType {
     Addition,
 }
 
-trait Op {
+trait Op<S: Ctx> {
     type Output;
     const OPERATION: OpType;
 
-    fn execute<S: FullContext>(self, state: &S) -> Self::Output;
-    fn execute_with_metadata<S: FullContext>(self, state: &S) -> (String, Self::Output);
+    fn execute(self, state: &S) -> Self::Output;
+    fn execute_with_metadata(self, state: &S) -> (String, Self::Output);
 
     // fn execute_with_graph(self) -> // TODO
 }
@@ -90,31 +91,32 @@ trait Op {
 // }
 
 #[derive(Copy, Clone, Debug)]
-struct Add<L: Op, R: Op>
+struct Add<S: Ctx, L: Op<S>, R: Op<S>>
 where
-    L: Op<Output = <R as Op>::Output>,
-    L::Output: AddOp<<R as Op>::Output, Output = <R as Op>::Output>
+    L: Op<S, Output = <R as Op<S>>::Output>,
+    L::Output: AddOp<<R as Op<S>>::Output, Output = <R as Op<S>>::Output>
 {
     lhs: L,
     rhs: R,
+    _state: PhantomData<S>,
 }
 
-impl<L: Op, R: Op> Op for Add<L, R>
+impl<S: Ctx, L: Op<S>, R: Op<S>> Op<S> for Add<S, L, R>
 where
-    L: Op<Output = <R as Op>::Output>,
-    L::Output: AddOp<<R as Op>::Output, Output = <R as Op>::Output>
+    L: Op<S, Output = <R as Op<S>>::Output>,
+    L::Output: AddOp<<R as Op<S>>::Output, Output = <R as Op<S>>::Output>
 {
-    type Output = <L as Op>::Output;
+    type Output = <L as Op<S>>::Output;
     const OPERATION: OpType = OpType::Addition;
 
-    fn execute<S: FullContext>(self, state: &S) -> Self::Output {
+    fn execute(self, state: &S) -> Self::Output {
         let lhs = self.lhs.execute(state);
         let rhs = self.rhs.execute(state);
 
         lhs + rhs
     }
 
-    fn execute_with_metadata<S: FullContext>(self, state: &S) -> (String, Self::Output) {
+    fn execute_with_metadata(self, state: &S) -> (String, Self::Output) {
         let (ml, lhs) = self.lhs.execute_with_metadata(state);
         let (mr, rhs) = self.rhs.execute_with_metadata(state);
 
@@ -123,29 +125,29 @@ where
 }
 
 #[derive(Debug)]
-struct RegisterInput<T: Display, I: Registers, F: Fn(&I) -> T> {
+struct Input<R: Registers, T: Display, F: Fn(&R) -> T> {
     func: F,
     _output: PhantomData<T>,
-    _input: PhantomData<I>,
+    _input: PhantomData<R>,
 }
 
-impl<T: Display, I: FullContext, F: Fn(&I) ->T> RegisterInput<T, I, F> {
-    fn new(func: F) -> OpWrapper<Self> {
-        RegisterInput { func, _input: PhantomData, _output: PhantomData }.into()
+impl<R: Ctx, T: Display, F: Fn(&R) ->T> Input<R, T, F> {
+    fn new(func: F) -> OpWrapper<R, Self> {
+        Input { func, _input: PhantomData, _output: PhantomData }.into()
     }
 }
 
 
-impl<T: Display, I: FullContext, F: Fn(&I) ->T> Op for RegisterInput<T, I, F>
+impl<S: Ctx, T: Display, F: Fn(&S) ->T> Op<S> for Input<S, T, F>
 {
     type Output = T;
     const OPERATION: OpType = OpType::Input;
 
-    fn execute<S: FullContext>(self, state: &S) -> Self::Output {
+    fn execute(self, state: &S) -> Self::Output {
         (self.func)(state)
     }
 
-    fn execute_with_metadata<S: FullContext>(self, state: &S) -> (String, Self::Output) {
+    fn execute_with_metadata(self, state: &S) -> (String, Self::Output) {
         let val = self.execute(state);
         (format!("<{}>", val), val)
     }
@@ -156,106 +158,121 @@ struct Imm<T: Display> {
     imm: T
 }
 
-impl<T: Display> From<T> for OpWrapper<Imm<T>> {
+impl<S: Ctx, T: Display> From<T> for OpWrapper<S, Imm<T>> {
     fn from(imm: T) -> Self {
         Imm { imm }.into()
     }
 }
 
-impl<T: Display> Op for Imm<T> {
+impl<S: Ctx, T: Display> Op<S> for Imm<T> {
     type Output = T;
     const OPERATION: OpType = OpType::Immediate;
 
-    fn execute<S: FullContext>(self, _state: &S) -> Self::Output {
+    fn execute(self, _state: &S) -> Self::Output {
         self.imm
     }
 
-    fn execute_with_metadata<S: FullContext>(self, _state: &S) -> (String, Self::Output) {
+    fn execute_with_metadata(self, _state: &S) -> (String, Self::Output) {
         (format!("{}", self.imm), self.imm)
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-struct OpWrapper<T: Op>(T);
+struct OpWrapper<S: Ctx, T: Op<S>>(T, PhantomData<S>);
 
-impl<T: Op> OpWrapper<T> {
+impl<S: Ctx, T: Op<S>> OpWrapper<S, T> {
     fn unwrap(self) -> T {
         self.0
     }
 }
 
-impl<T: Op> Op for OpWrapper<T> {
-    type Output = <T as Op>::Output;
-    const OPERATION: OpType = <T as Op>::OPERATION;
+impl<S: Ctx, T: Op<S>> Op<S> for OpWrapper<S, T> {
+    type Output = <T as Op<S>>::Output;
+    const OPERATION: OpType = <T as Op<S>>::OPERATION;
 
-    fn execute<S: FullContext>(self, state: &S) -> Self::Output {
+    fn execute(self, state: &S) -> Self::Output {
         self.0.execute(state)
     }
 
-    fn execute_with_metadata<S: FullContext>(self, state: &S) -> (String, Self::Output) {
+    fn execute_with_metadata(self, state: &S) -> (String, Self::Output) {
         self.0.execute_with_metadata(state)
     }
 }
 
-impl<O: Op> From<O> for OpWrapper<O> {
+impl<S: Ctx, O: Op<S>> From<O> for OpWrapper<S, O> {
     fn from(op: O) -> Self {
-        OpWrapper(op)
+        OpWrapper(op, PhantomData)
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-struct LabeledOp<T: Op>(T, &'static str); // TODO!
+struct LabeledOp<S: Ctx, T: Op<S>>(T, &'static str, PhantomData<S>); // TODO!
 
-impl<L: Op, R: Op> AddOp<OpWrapper<R>> for OpWrapper<L>
+impl<S: Ctx, L: Op<S>, R: Op<S>> AddOp<OpWrapper<S, R>> for OpWrapper<S, L>
 where
-    L: Op<Output = <R as Op>::Output>,
-    L::Output: AddOp<<R as Op>::Output, Output = <R as Op>::Output>
+    L: Op<S, Output = <R as Op<S>>::Output>,
+    L::Output: AddOp<<R as Op<S>>::Output, Output = <R as Op<S>>::Output>
 {
-    type Output = OpWrapper<Add<L, R>>;
+    type Output = OpWrapper<S, Add<S, L, R>>;
 
-    fn add(self, rhs: OpWrapper<R>) -> Self::Output {
+    fn add(self, rhs: OpWrapper<S, R>) -> Self::Output {
         Add {
             lhs: self.unwrap(),
             rhs: rhs.unwrap(),
+            _state: PhantomData
         }.into()
     }
 }
 
 trait Registers {
-    fn read(&self, num: u8) -> u16;
+    fn read_reg(&self, num: u8) -> u16;
 
-    fn write(&self, num: u8, byte: u16);
+    fn write_reg(&self, num: u8, bytes: u16);
 }
 
 trait Memory {
-    fn read(self, addr: u16) -> u8;
+    fn read_mem(&self, addr: u16) -> u8;
 
-    fn write(&self, addr: u16, byte: u8);
+    fn write_mem(&self, addr: u16, byte: u8);
 }
 
-trait FullContext: Registers + Memory {}
-impl<S: Registers + Memory> FullContext for S {}
+trait Ctx: Registers + Memory {}
+impl<S: Registers + Memory> Ctx for S {}
 
 struct State {
     general: Cell<[u16; 8]>,
-    mem: [u8; std::u16::MAX as usize]
+    mem: RefCell<[u8; std::u16::MAX as usize]>
 }
 
 impl State {
     fn new() -> Self {
         State {
             general: Cell::new([0u16; 8]),
-            mem: [0u8; std::u16::MAX as usize]
+            mem: RefCell::new([0u8; std::u16::MAX as usize])
         }
     }
 }
 
 impl Registers for State {
+    fn read_reg(&self, num: u8) -> u16 {
+        self.general.get()[num as usize]
+    }
 
+    fn write_reg(&self, num: u8, bytes: u16) {
+        let mut regs = self.general.get();
+        regs[num as usize] = bytes;
+        self.general.set(regs);
+    }
 }
 
 impl Memory for State {
+    fn read_mem(&self, addr: u16) -> u8 {
+        self.mem.borrow()[addr as usize]
+    }
 
+    fn write_mem(&self, addr: u16, byte: u8) {
+        self.mem.borrow_mut()[addr as usize] = byte;
+    }
 }
 
 
@@ -265,11 +282,11 @@ fn main() {
 
     let state = State::new();
 
-    let r0 = RegisterInput::new(|r| r.read(0));
+    let r0 = Input::<State, _, _>::new(|r| r.read_reg(0));
 
-    <State as Registers>::write(&state, 0, 3);
+    <State as Registers>::write_reg(&state, 0, 3);
 
-    let a: OpWrapper<_> = 89.into();
+    let a: OpWrapper<_, _> = 89.into();
     let b = 90.into();
 
     let c = 678.into();
