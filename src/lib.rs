@@ -261,12 +261,13 @@ impl IdentifierReplace<'_> {
 
 impl VisitMut for IdentifierReplace<'_> {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        println!("{:?}", expr);
+        // println!("{:?}", expr);
 
         if let Expr::Path(ExprPath { path, .. }) = expr {
             println!("match!!! {:?}", path);
             if path.is_ident(self.identifier_name) {
-                *expr = parse_quote!(#(self.substitution));
+                let num = self.substitution;
+                *expr = parse_quote!(#num);
                 return;
             }
         // This is unfortunately not permitted:
