@@ -15,7 +15,6 @@ mod tests {
 
     #[test]
     fn test() {
-        // repeat_with_n!(10, n, { println!("{}", n) } );
         repeat_with_n!(10, n, { impl Foo for Bar<{n as usize}> {} } );
     }
 }

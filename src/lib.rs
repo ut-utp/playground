@@ -2,18 +2,12 @@
 
 extern crate proc_macro;
 
-use syn::Block;
-use syn::Item;
-use std::iter::FromIterator;
-use quote::ToTokens;
-use syn::{Expr, ExprPath};
-use proc_macro2::{Literal, Ident, Span, TokenStream, TokenTree};
-use quote::{quote, quote_spanned};
+use proc_macro2::{Ident, Span, TokenStream, TokenTree};
+use quote::{quote, quote_spanned, ToTokens};
 use std::collections::VecDeque;
+use std::iter::FromIterator;
 use syn::visit_mut::{self, VisitMut};
-use syn::parse2;
-use syn::{parse, parse_quote};
-// use proc_macro::TokenStream;
+use syn::{parse2, parse_quote, Block, Expr, ExprPath, Item};
 
 /// Report an error with the given `span` and message.
 fn spanned_err(span: Span, msg: impl Into<String>) -> proc_macro::TokenStream {
@@ -209,41 +203,18 @@ fn parse_comma(tokens: &mut VecDeque<TokenTree>) -> Result<(), proc_macro::Token
         })
 }
 
-// fn substitute_token(
-//     identifier_name: &String,
-//     substitution: TokenTree,
-//     tokens: &Vec<&TokenTree>,
-// ) -> Vec<TokenTree> {
-//     tokens
-//         .iter()
-//         .map(|tok| {
-//             println!("TOK! {} vs. {}", tok.to_string(), *identifier_name);
-
-//             if tok.to_string() == *identifier_name {
-//                 substitution.clone()
-//             } else {
-//                 (*tok).clone()
-//             }
-//         })
-//         .collect()
-// }
-
 struct IdentifierReplace<'a> {
     identifier_name: &'a Ident,
-    substitution: &'a Expr
+    substitution: &'a Expr,
 }
 
 impl VisitMut for IdentifierReplace<'_> {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        // println!("hit: {:?}", expr);
-        if let Expr::Path(ExprPath { path, ..}) = expr {
-            println!("yo! we got: {:?}", path.get_ident());
+        if let Expr::Path(ExprPath { path, .. }) = expr {
             if path.is_ident(self.identifier_name) {
-                println!("match!!");
                 *expr = self.substitution.clone();
                 return;
             }
-            println!("no match!!!!");
         }
 
         visit_mut::visit_expr_mut(self, expr);
@@ -255,23 +226,10 @@ fn substitute_token(
     substitution: &Expr,
     tokens: TokenStream,
 ) -> TokenStream {
-    let mut id_replace = IdentifierReplace { identifier_name, substitution };
-
-    // parse2(tokens.clone()) // Try as an item
-    //     .as_mut()
-    //     .map(|mut t| {
-    //         <IdentifierReplace as VisitMut>::visit_item_mut(&mut id_replace, &mut t);
-    //         t.to_token_stream()
-    //     })
-    //     .or_else(|_| {
-    //         parse2(tokens.clone())
-    //             .as_mut()
-    //             .map(|mut t| {
-    //                 <IdentifierReplace as VisitMut>::visit_expr_mut(&mut id_replace, &mut t);
-    //                 t.to_token_stream()
-    //             })
-    //     })
-    //     .unwrap()
+    let mut id_replace = IdentifierReplace {
+        identifier_name,
+        substitution,
+    };
 
     if let Ok(mut item) = parse2(tokens.clone()) {
         <IdentifierReplace as VisitMut>::visit_item_mut(&mut id_replace, &mut item);
@@ -283,16 +241,18 @@ fn substitute_token(
         let i = parse2::<Item>(tokens.clone());
         let b = parse2::<Block>(tokens.clone());
 
-        spanned_err(Span::call_site(),
-            format!("Couldn't parse as an item or a block. \
-                Item: {:?} \
-                Block: {:?} ",
-                    i.err().unwrap(), b.err().unwrap())).into()
+        spanned_err(
+            Span::call_site(),
+            format!(
+                "Couldn't parse as an item or a block. \
+                 Item: {:?} \
+                 Block: {:?} ",
+                i.err().unwrap(),
+                b.err().unwrap()
+            ),
+        )
+        .into()
     }
-
-    // <IdentifierReplace as VisitMut>::visit_item_mut(&mut id_replace, &mut tokens);
-
-    // tokens.to_token_stream()
 }
 
 /// Use like: `repeat_with_n!{ num, var_name, <tokens_to_repeat> }`.
@@ -342,38 +302,14 @@ pub fn repeat_with_n(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
     let tokens: Vec<_> = tokens.iter().collect();
     let ts = (0..=num)
         .map(|n| parse_quote!(#n))
-        .map(|e: Expr| substitute_token(&var, &e, TokenStream::from_iter(tokens.iter().map(|tt| tt.clone().clone()))))
-        .fold(TokenStream::new(), |acc, ts| quote!{ #acc #ts });
+        .map(|e: Expr| {
+            substitute_token(
+                &var,
+                &e,
+                TokenStream::from_iter(tokens.iter().map(|tt| tt.clone().clone())),
+            )
+        })
+        .fold(TokenStream::new(), |acc, ts| quote! { #acc #ts });
 
-    // println!("{:#?}", ts);
-    // println!("ret: {}", ts);
     proc_macro::TokenStream::from(ts)
-
-    // let ts = (0..=num)
-    //     .map(|n| Literal::usize_suffixed(n))
-    //     .map(TokenTree::Literal)
-    //     .map(|tt| substitute_token(&var, tt, &tokens))
-    //     .map(|tt| quote! {#(#tt)*})
-    //     .fold(TokenStream::new(), |acc, ts| quote!{ #acc #ts });
-
-    // println!("{}", ts);
-
-    // proc_macro::TokenStream::from(ts)
-
-
-    // if let Some(tok) = tokens.pop_front() {
-    //     match if let TokenTree::Punct(ref p) = tok {
-    //         if let ',' = p.as_char() { Ok(()) }
-    //         else { Err(tok) }
-    //     }
-    //     else { Err(tok) }
-    //     {
-    //         Err(tok) => return spanned_err(tok.span(), "Expected a comma."),
-    //         _ => {}
-    //     }
-    // } else {
-    //     return spanned_err(Span::call_site(), "Expected a comma; ran out of tokens.");
-    // }
-
-    // let num = tokens.pop_front().unwrap()
 }
