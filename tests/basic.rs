@@ -1,7 +1,7 @@
 #![feature(proc_macro_hygiene)]
 
 #[macro_use(repeat)]
-extern crate repeat_macro;
+extern crate repeat_macros;
 
 #[cfg(test)]
 mod tests {

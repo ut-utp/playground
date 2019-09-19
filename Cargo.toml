@@ -1,5 +1,5 @@
 [package]
-name = "repeat-macro"
+name = "repeat-macros"
 version = "0.1.0"
 authors = ["Rahul Butani <rr.butani@gmail.com>"]
 edition = "2018"
@@ -12,4 +12,4 @@ proc-macro = true
 [dependencies]
 quote = "1.0.2"
 proc-macro2 = "1.0.3"
-syn = { version = "1.0.5", features = ["derive", "visit-mut", "parsing", "full"] }
+syn = { version = "1.0.5", features = ["derive", "visit-mut", "parsing", "full", "extra-traits"] }

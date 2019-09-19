@@ -7,7 +7,7 @@ use quote::{quote, quote_spanned, ToTokens};
 use std::collections::VecDeque;
 use std::iter::FromIterator;
 use syn::visit_mut::{self, VisitMut};
-use syn::{parse2, parse_quote, Block, Expr, ExprPath, Item};
+use syn::{parse2, parse_quote, Block, Expr, ExprPath, ExprMacro, Item, Macro};
 
 /// Report an error with the given `span` and message.
 fn spanned_err(span: Span, msg: impl Into<String>) -> proc_macro::TokenStream {
@@ -24,42 +24,42 @@ fn spanned_err(span: Span, msg: impl Into<String>) -> proc_macro::TokenStream {
 /// Based pretty heavily on this: https://stackoverflow.com/a/54351072/3006245
 ///
 /// ```rust,compile_fail
-/// # #[macro_use] extern crate repeat_macro;
+/// # #[macro_use] extern crate repeat_macros;
 /// fn no_tokens() {
 ///    println!("{}", repeat!());
 /// }
 /// ```
 ///
 /// ```rust,compile_fail
-/// # #[macro_use] extern crate repeat_macro;
+/// # #[macro_use] extern crate repeat_macros;
 /// fn missing_repeated_tokens() {
 ///     println!("{}", repeat!(789,));
 /// }
 /// ```
 ///
 /// ```rust,compile_fail
-/// # #[macro_use] extern crate repeat_macro;
+/// # #[macro_use] extern crate repeat_macros;
 /// fn missing_comma() {
 ///     println!("{}", repeat!(89 "yay" "go",));
 /// }
 /// ```
 ///
 /// ```rust,compile_fail
-/// # #[macro_use] extern crate repeat_macro;
+/// # #[macro_use] extern crate repeat_macros;
 /// fn non_integer() {
 ///     println!("{}", repeat!("yay", "yay"));
 /// }
 /// ```
 ///
 /// ```rust,compile_fail
-/// # #[macro_use] extern crate repeat_macro;
+/// # #[macro_use] extern crate repeat_macros;
 /// fn negative_integer() {
 ///     println!("{}", repeat!(-789, "yay", ));
 /// }
 /// ```
 ///
 /// ```ignore
-/// # #[macro_use] extern crate repeat_macro;
+/// # #[macro_use] extern crate repeat_macros;
 /// println!("{}", repeat!(1, "yay"));
 /// ```
 #[proc_macro]
@@ -205,25 +205,94 @@ fn parse_comma(tokens: &mut VecDeque<TokenTree>) -> Result<(), proc_macro::Token
 
 struct IdentifierReplace<'a> {
     identifier_name: &'a Ident,
-    substitution: &'a Expr,
+    // substitution: &'a Expr,
+    substitution: usize,
+}
+
+impl IdentifierReplace<'_> {
+    fn modify_token_stream(&mut self, ts: &mut TokenStream) {
+        // let mut t = ts.clone();
+
+        // t.into_iter().by_ref().for_each(|mut tt| {
+        //     use TokenTree::*;
+        //     match tt {
+        //         Group(g) => {
+        //             let delim = g.delimiter();
+        //             let mut ts = g.stream();
+
+        //             self.modify_token_stream(&mut ts);
+
+        //             tt = Group(proc_macro2::Group::new(delim, ts));
+        //         },
+        //         Ident(id) => {
+        //             if id == *self.identifier_name {
+        //                 tt = Literal(proc_macro2::Literal::usize_suffixed(self.substitution));
+        //             }
+        //         }
+        //         Punct(_) | Literal(_) => {}
+        //     }
+        // });
+
+        *ts = ts.clone().into_iter().map(|tt| {
+            use TokenTree::*;
+            match tt {
+                Group(g) => {
+                    let delim = g.delimiter();
+                    let mut ts = g.stream();
+
+                    self.modify_token_stream(&mut ts);
+
+                    Group(proc_macro2::Group::new(delim, ts))
+                },
+                Ident(id) => {
+                    if id == *self.identifier_name {
+                        Literal(proc_macro2::Literal::usize_suffixed(self.substitution))
+                    } else {
+                        Ident(id)
+                    }
+                }
+                a @ Punct(_) | a @ Literal(_) => { a }
+            }
+        }).collect();
+
+        // *ts = t;
+    }
 }
 
 impl VisitMut for IdentifierReplace<'_> {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        println!("{:?}", expr);
+
         if let Expr::Path(ExprPath { path, .. }) = expr {
+            println!("match!!! {:?}", path);
             if path.is_ident(self.identifier_name) {
-                *expr = self.substitution.clone();
+                *expr = parse_quote!(#(self.substitution));
                 return;
             }
-        }
+        // This is unfortunately not permitted:
+        // } else if let Expr::Macro(ref expr_mac @ ExprMacro { mac: ref mac @ Macro { ref tokens, .. }, .. }) = expr {
+        } else if let Expr::Macro(expr_mac, ..) = expr {
+            println!("got a macro!");
+            // Can't make assumptions about what's valid for this macro, so we can't
+            // just recurse and call `substitute_token`.
 
+            // Instead we'll just recurse through the TokenStreams
+            let mut token_stream = expr_mac.mac.tokens.clone();
+
+            self.modify_token_stream(&mut token_stream);
+
+            *expr = Expr::Macro(ExprMacro { mac: Macro { tokens: token_stream, ..expr_mac.mac.clone()}, ..expr_mac.clone()});
+
+        } else {
+            println!("no match!!");
+        }
         visit_mut::visit_expr_mut(self, expr);
     }
 }
 
 fn substitute_token(
     identifier_name: &Ident,
-    substitution: &Expr,
+    substitution: usize,
     tokens: TokenStream,
 ) -> TokenStream {
     let mut id_replace = IdentifierReplace {
@@ -301,11 +370,10 @@ pub fn repeat_with_n(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
     // (we don't care if this is empty!)
     let tokens: Vec<_> = tokens.iter().collect();
     let ts = (0..=num)
-        .map(|n| parse_quote!(#n))
-        .map(|e: Expr| {
+        .map(|n| {
             substitute_token(
                 &var,
-                &e,
+                n,
                 TokenStream::from_iter(tokens.iter().map(|tt| tt.clone().clone())),
             )
         })

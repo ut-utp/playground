@@ -3,7 +3,7 @@
 #![allow(incomplete_features)]
 
 #[macro_use(repeat_with_n)]
-extern crate repeat_macro;
+extern crate repeat_macros;
 
 
 #[cfg(test)]
@@ -13,8 +13,13 @@ mod tests {
     #[allow(unused)]
     struct Bar<const B: usize>;
 
+    // #[test]
+    // fn test() {
+    //     repeat_with_n!(10, n, { impl Foo for Bar<{n as usize}> {} });
+    // }
+
     #[test]
-    fn test() {
-        repeat_with_n!(10, n, { impl Foo for Bar<{n as usize}> {} } );
+    fn with_macro() {
+        repeat_with_n!(10, longer_identifier, { println!("{}", longer_identifier); });
     }
 }
