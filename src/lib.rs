@@ -1,5 +1,3 @@
-#![recursion_limit = "128"]
-
 extern crate proc_macro;
 
 use proc_macro2::{Ident, Span, TokenStream, TokenTree};
@@ -237,6 +235,8 @@ fn substitute_token(
         substitution,
     };
 
+    let tokens = quote!({ #tokens });
+
     if let Ok(mut item) = parse2(tokens.clone()) {
         <IdentifierReplace as VisitMut>::visit_item_mut(&mut id_replace, &mut item);
         item.to_token_stream()
@@ -261,7 +261,8 @@ fn substitute_token(
     }
 }
 
-/// Use like: `repeat_with_n!{ num, var_name, <tokens_to_repeat> }`.
+/// Use like: `repeat_with_n!{ num, var_name, { <tokens_to_repeat> } }`.
+/// Or: `repeat_with_n!(num, var_name, { <tokens_to_repeat> });`.
 #[proc_macro]
 pub fn repeat_with_n(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = TokenStream::from(input);

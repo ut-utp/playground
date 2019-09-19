@@ -32,4 +32,9 @@ mod tests {
             println!("{}", format!("{}", format!("{}{}{}{}", y, y, y, y)));
         });
     }
+
+    #[test]
+    fn without_braces() {
+        repeat_with_n!(10, y, println!("{:?}", y); );
+    }
 }
