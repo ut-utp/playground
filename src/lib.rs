@@ -1,6 +1,8 @@
 // #![no_std]
+#![recursion_limit="256"]
 #![allow(incomplete_features)]
 #![feature(const_generics/*, maybe_uninit_slice*/)]
+#![feature(const_fn)]
 
 #[macro_use]
 extern crate static_assertions;

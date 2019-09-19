@@ -5,6 +5,4 @@ authors = ["Rahul Butani <rr.butani@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-typenum = "1.11.2"
 static_assertions = "0.3.4"
-array-vec = "0.1.3"
