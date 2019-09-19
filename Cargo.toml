@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 static_assertions = "0.3.4"
+repeat-macros = { path = "../repeat-macros" }
