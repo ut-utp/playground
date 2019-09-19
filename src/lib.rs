@@ -7,7 +7,7 @@ use quote::{quote, quote_spanned, ToTokens};
 use std::collections::VecDeque;
 use std::iter::FromIterator;
 use syn::visit_mut::{self, VisitMut};
-use syn::{parse2, parse_quote, Block, Expr, ExprPath, ExprMacro, Item, Macro};
+use syn::{parse2, parse_quote, Block, Expr, ExprMacro, ExprPath, Item, Macro};
 
 /// Report an error with the given `span` and message.
 fn spanned_err(span: Span, msg: impl Into<String>) -> proc_macro::TokenStream {
@@ -67,21 +67,6 @@ pub fn repeat(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = TokenStream::from(input);
     let mut tokens = input.into_iter().collect::<VecDeque<_>>();
 
-    // if let Some(err) = match tokens.len() {
-    //     0 => Some(spanned_err(
-    //         Span::call_site(),
-    //         "We expected a number and some tokens to repeat, but got nothing.",
-    //     )),
-    //     1 | 2 => Some(spanned_err(
-    //         tokens.last().unwrap().span(),
-    //         "We expected a number *and* some tokens to repeat, but didn't get any \
-    //          tokens to repeat.",
-    //     )),
-    //     _ => None,
-    // } {
-    //     return err;
-    // }
-
     let num_times: usize = match tokens.pop_front() {
         None => {
             return spanned_err(
@@ -127,11 +112,7 @@ pub fn repeat(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 }
             }
             _ => Err(tok),
-        }, // Some(TokenTree::Punct(ref p)) => {
-           //     if let ',' = p.as_char() { Ok(()) }
-           //     else { Err(p) }
-           // }
-           // Some(other) => { Err(other) }
+        },
     } {
         Err(tok) => {
             return spanned_err(
@@ -153,36 +134,12 @@ pub fn repeat(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         );
     }
 
-    // let next_tok = tokens.pop_front().unwrap();
-    // match if let TokenTree::Punct(ref p) = next_tok {
-    //     if let ',' = p.as_char() {
-    //         Some(())
-    //     } else {
-    //         None
-    //     }
-    // } else {
-    //     None
-    // } {
-    //     None => {
-    //         return spanned_err(
-    //             next_tok.span(),
-    //             format!(
-    //                 "We expected a comma after the number of times to repeat but got {}.",
-    //                 next_tok
-    //             ),
-    //         );
-    //     }
-    //     _ => {}
-    // }
-
     let tokens: Vec<_> = tokens.iter().collect();
 
     core::iter::repeat(quote! {#(#tokens)*})
         .map(proc_macro::TokenStream::from)
         .take(num_times)
         .collect()
-
-    // proc_macro::TokenStream::from(output)
 }
 
 fn parse_comma(tokens: &mut VecDeque<TokenTree>) -> Result<(), proc_macro::TokenStream> {
@@ -205,75 +162,50 @@ fn parse_comma(tokens: &mut VecDeque<TokenTree>) -> Result<(), proc_macro::Token
 
 struct IdentifierReplace<'a> {
     identifier_name: &'a Ident,
-    // substitution: &'a Expr,
     substitution: usize,
 }
 
 impl IdentifierReplace<'_> {
     fn modify_token_stream(&mut self, ts: &mut TokenStream) {
-        // let mut t = ts.clone();
+        *ts = ts
+            .clone()
+            .into_iter()
+            .map(|tt| {
+                use TokenTree::*;
+                match tt {
+                    Group(g) => {
+                        let delim = g.delimiter();
+                        let mut ts = g.stream();
 
-        // t.into_iter().by_ref().for_each(|mut tt| {
-        //     use TokenTree::*;
-        //     match tt {
-        //         Group(g) => {
-        //             let delim = g.delimiter();
-        //             let mut ts = g.stream();
+                        self.modify_token_stream(&mut ts);
 
-        //             self.modify_token_stream(&mut ts);
-
-        //             tt = Group(proc_macro2::Group::new(delim, ts));
-        //         },
-        //         Ident(id) => {
-        //             if id == *self.identifier_name {
-        //                 tt = Literal(proc_macro2::Literal::usize_suffixed(self.substitution));
-        //             }
-        //         }
-        //         Punct(_) | Literal(_) => {}
-        //     }
-        // });
-
-        *ts = ts.clone().into_iter().map(|tt| {
-            use TokenTree::*;
-            match tt {
-                Group(g) => {
-                    let delim = g.delimiter();
-                    let mut ts = g.stream();
-
-                    self.modify_token_stream(&mut ts);
-
-                    Group(proc_macro2::Group::new(delim, ts))
-                },
-                Ident(id) => {
-                    if id == *self.identifier_name {
-                        Literal(proc_macro2::Literal::usize_suffixed(self.substitution))
-                    } else {
-                        Ident(id)
+                        Group(proc_macro2::Group::new(delim, ts))
                     }
+                    Ident(id) => {
+                        if id == *self.identifier_name {
+                            Literal(proc_macro2::Literal::usize_suffixed(self.substitution))
+                        } else {
+                            Ident(id)
+                        }
+                    }
+                    a @ Punct(_) | a @ Literal(_) => a,
                 }
-                a @ Punct(_) | a @ Literal(_) => { a }
-            }
-        }).collect();
-
-        // *ts = t;
+            })
+            .collect();
     }
 }
 
 impl VisitMut for IdentifierReplace<'_> {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        // println!("{:?}", expr);
-
         if let Expr::Path(ExprPath { path, .. }) = expr {
-            println!("match!!! {:?}", path);
             if path.is_ident(self.identifier_name) {
                 let num = self.substitution;
                 *expr = parse_quote!(#num);
                 return;
             }
-        // This is unfortunately not permitted:
+        // This is unfortunately not permitted (multiple @ binds):
         // } else if let Expr::Macro(ref expr_mac @ ExprMacro { mac: ref mac @ Macro { ref tokens, .. }, .. }) = expr {
         } else if let Expr::Macro(expr_mac, ..) = expr {
-            println!("got a macro!");
             // Can't make assumptions about what's valid for this macro, so we can't
             // just recurse and call `substitute_token`.
 
@@ -282,11 +214,15 @@ impl VisitMut for IdentifierReplace<'_> {
 
             self.modify_token_stream(&mut token_stream);
 
-            *expr = Expr::Macro(ExprMacro { mac: Macro { tokens: token_stream, ..expr_mac.mac.clone()}, ..expr_mac.clone()});
-
-        } else {
-            println!("no match!!");
+            *expr = Expr::Macro(ExprMacro {
+                mac: Macro {
+                    tokens: token_stream,
+                    ..expr_mac.mac.clone()
+                },
+                ..expr_mac.clone()
+            });
         }
+
         visit_mut::visit_expr_mut(self, expr);
     }
 }
@@ -328,8 +264,6 @@ fn substitute_token(
 /// Use like: `repeat_with_n!{ num, var_name, <tokens_to_repeat> }`.
 #[proc_macro]
 pub fn repeat_with_n(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    println!("{:#?}", input);
-
     let input = TokenStream::from(input);
     let mut tokens = input.into_iter().collect::<VecDeque<_>>();
 
