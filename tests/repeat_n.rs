@@ -1,4 +1,6 @@
 #![feature(proc_macro_hygiene)]
+#![feature(const_generics)]
+#![allow(incomplete_features)]
 
 #[macro_use(repeat_with_n)]
 extern crate repeat_macro;
@@ -6,14 +8,14 @@ extern crate repeat_macro;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    trait Foo { }
 
-    fn test() {
-        repeat_with_n!(10, n, (println!("{}", n)));
-    }
+    #[allow(unused)]
+    struct Bar<const B: usize>;
 
     #[test]
-    fn name() {
-        unimplemented!();
+    fn test() {
+        // repeat_with_n!(10, n, { println!("{}", n) } );
+        repeat_with_n!(10, n, { impl Foo for Bar<{n as usize}> {} } );
     }
 }
