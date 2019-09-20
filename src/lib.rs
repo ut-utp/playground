@@ -1,14 +1,11 @@
 // #![no_std]
 #![recursion_limit="256"]
 #![allow(incomplete_features)]
-#![feature(proc_macro_hygiene)]
 #![feature(const_generics/*, maybe_uninit_slice*/)]
 #![feature(const_fn)]
 
 #[macro_use]
 extern crate static_assertions;
-#[macro_use(repeat_with_n)]
-extern crate repeat_macros;
 
 // Some old notes:
 
