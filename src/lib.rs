@@ -5,7 +5,7 @@ use quote::{quote, quote_spanned, ToTokens};
 use std::collections::VecDeque;
 use std::iter::FromIterator;
 use syn::visit_mut::{self, VisitMut};
-use syn::{parse2, parse_quote, Block, Expr, ExprMacro, ExprPath, Item, ItemMacro, Macro};
+use syn::{parse2, parse_quote, Block, Expr, ExprPath, Item};
 
 /// Report an error with the given `span` and message.
 fn spanned_err(span: Span, msg: impl Into<String>) -> proc_macro::TokenStream {
@@ -201,24 +201,12 @@ impl VisitMut for IdentifierReplace<'_> {
                 *expr = parse_quote!(#num);
                 return;
             }
-        // This is unfortunately not permitted (multiple @ binds):
-        // } else if let Expr::Macro(ref expr_mac @ ExprMacro { mac: ref mac @ Macro { ref tokens, .. }, .. }) = expr {
         } else if let Expr::Macro(expr_mac) = expr {
             // Can't make assumptions about what's valid for this macro, so we can't
             // just recurse and call `substitute_token`.
 
             // Instead we'll just recurse through the TokenStreams
-            let mut token_stream = expr_mac.mac.tokens.clone();
-
-            self.modify_token_stream(&mut token_stream);
-
-            *expr = Expr::Macro(ExprMacro {
-                mac: Macro {
-                    tokens: token_stream,
-                    ..expr_mac.mac.clone()
-                },
-                ..expr_mac.clone()
-            });
+            self.modify_token_stream(&mut expr_mac.mac.tokens);
         }
 
         visit_mut::visit_expr_mut(self, expr);
@@ -228,29 +216,11 @@ impl VisitMut for IdentifierReplace<'_> {
         // We've got to check for macros here too:
         // (I'm fairly sure Item::Macro2 corresponds to macro definitions (with the
         // (`macro` keyword) -- all macro invocations in an item are mapped to
-        // (`Item::Macro`)
+        // `Item::Macro`)
         if let Item::Macro(item_mac) = item {
             // Same deal as in `visit_expr_mut`:
-            let mut token_stream = item_mac.mac.tokens.clone();
-
-            self.modify_token_stream(&mut token_stream);
-
-            *item = Item::Macro(ItemMacro {
-                mac: Macro {
-                    tokens: token_stream,
-                    ..item_mac.mac.clone()
-                },
-                ..item_mac.clone()
-            });
-        } /*else if let Item::Macro2(item_mac2) = item {
-
-              *item = Item::Macro2(ItemMacro2 {
-                  mac: Macro {
-
-                  },
-                  ..item_mac2
-              })
-          }*/
+            self.modify_token_stream(&mut item_mac.mac.tokens);
+        }
 
         visit_mut::visit_item_mut(self, item);
     }
@@ -268,37 +238,35 @@ fn substitute_token(
 
     if let Ok(mut item) = parse2(tokens.clone()) {
         <IdentifierReplace as VisitMut>::visit_item_mut(&mut id_replace, &mut item);
-        println!("it's an item, kids");
         item.to_token_stream()
     } else if let Ok(mut expr) = parse2(tokens.clone()) {
-        println!("it's an __expression__");
         <IdentifierReplace as VisitMut>::visit_expr_mut(&mut id_replace, &mut expr);
         expr.to_token_stream()
     } else {
-        println!("DISPATCHED THE BACKUP THING YO");
-        let mut ts = tokens;
-        id_replace.modify_token_stream(&mut ts);
-        ts
+        // let mut ts = tokens;
+        // id_replace.modify_token_stream(&mut ts);
+        // ts
 
-        // let i = parse2::<Item>(tokens.clone());
-        // let b = parse2::<Block>(tokens.clone());
+        let i = parse2::<Item>(tokens.clone());
+        let b = parse2::<Block>(tokens.clone());
 
-        // spanned_err(
-        //     Span::call_site(),
-        //     format!(
-        //         "Couldn't parse as an item or a block. \
-        //          Item: {:?} \
-        //          Block: {:?} ",
-        //         i.err().unwrap(),
-        //         b.err().unwrap()
-        //     ),
-        // )
-        // .into()
+        spanned_err(
+            Span::call_site(),
+            format!(
+                "Couldn't parse as an item or a block. \
+                 Item: {:?} \
+                 Block: {:?} ",
+                i.err().unwrap(),
+                b.err().unwrap()
+            ),
+        )
+        .into()
     }
 }
 
 /// Use like: `repeat_with_n!{ num, var_name, { <tokens_to_repeat> } }`.
 /// Or: `repeat_with_n!(num, var_name, { <tokens_to_repeat> });`.
+/// Braces around the tokens to repeat _should_ be optional.
 #[proc_macro]
 pub fn repeat_with_n(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = TokenStream::from(input);
