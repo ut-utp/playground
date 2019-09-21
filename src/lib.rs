@@ -77,6 +77,7 @@ extern crate static_assertions;
 //
 // let f: Or<Add<Zext<Xor<Imm<Output = [Bit; 4]>, Imm<Output = [Bit; 4]>, Output = [Bit; 4]>, Output = [Bit; 8]>, Zext<Imm<Output = [Bit; 4]>, Output = [Bit; 8]>>, Imm<Output = [Bit; 8]> = (zext::<8>(a ^ b) + zext::<8>(c)) | d;
 
+mod util;
 mod ops;
 mod wires;
 
