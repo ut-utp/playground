@@ -100,18 +100,85 @@ repeat_with_n!(8, N, single_impl! {N, FitsInU8});
 //         });
 // }
 
+// fn get_wire_bytes()
+
+/// Wires with 0 to 8 bits (0 to 1 bytes) can be represented by a u8.
 impl<const B: BitCountType, const S: usize> From<Wire<{ B }, { S }>> for u8
 where
     Wire<{ B }, { S }>: FitsInU8,
 {
     fn from(wire: Wire<{ B }, { S }>) -> Self {
-        wire.repr[0]
+        let bytes = wire.get_bytes::<{core::mem::size_of::<Self>()}>();
+
+        // There currently doesn't seem to be a way to get the typechecker to
+        // understand that a const generic value is the same as another constant
+        // so we resort to using unsafe:
+        Self::from_le_bytes(unsafe { core::mem::transmute(bytes) })
+
+        // /// Where S is the number of bytes we have, and U is the number of bytes
+        // /// we need, the following makes a slice of the last S bytes of U:
+        // ///   `(U - S)..S`
+        // ///
+        // /// Some examples:
+        // ///   S  |  U  | `(U - S)..U`
+        // /// --------------------------
+        // ///   0  |  1  |     1..1
+        // ///   1  |  1  |     0..1
+        // ///   0  |  4  |     4..4
+        // ///   1  |  4  |     3..4
+        // ///   2  |  4  |     2..4
+        // ///   3  |  4  |     1..4
+        // ///   4  |  4  |     0..4
+        // ///   0  |  1  |     1..1
+        // ///   0  |  1  |     1..1
+
+        // bytes[]
+        // for i in 0..S {
+        //     bytes[i] = self.repr
+        // }
+        // bytes[0]
     }
 }
 
+/// Wires with 0 to 16 bits (0 to 2 bytes) can be represented by a u16.
 impl<const B: BitCountType, const S: usize> From<Wire<{ B }, { S }>> for u16
 where
     Wire<{ B }, { S }>: FitsInU16,
+{
+    fn from(wire: Wire<{ B }, { S }>) -> Self {
+        // This works if we're guaranteed to have more bytes than we need; it
+        // breaks when we have fewer.
+        let (bytes, _) = wire.repr.split_at(core::mem::size_of::<Self>());
+        Self::from_le_bytes(bytes.try_into().unwrap())
+    }
+}
+
+/// Wires with 0 to 32 bits (0 to 4 bytes) can be represented by a u32.
+impl<const B: BitCountType, const S: usize> From<Wire<{ B }, { S }>> for u32
+where
+    Wire<{ B }, { S }>: FitsInU32,
+{
+    fn from(wire: Wire<{ B }, { S }>) -> Self {
+        let bytes = wire.get_bytes::<{core::mem::size_of::<Self>()}>();
+        Self::from_le_bytes(bytes.try_into().unwrap())
+    }
+}
+
+/// Wires with 0 to 64 bits (0 to 8 bytes) can be represented by a u64.
+impl<const B: BitCountType, const S: usize> From<Wire<{ B }, { S }>> for u64
+where
+    Wire<{ B }, { S }>: FitsInU64,
+{
+    fn from(wire: Wire<{ B }, { S }>) -> Self {
+        let (bytes, _) = wire.repr.split_at(core::mem::size_of::<Self>());
+        Self::from_le_bytes(bytes.try_into().unwrap())
+    }
+}
+
+/// Wires with 0 to 128 bits (0 to 16 bytes) can be represented by a u128.
+impl<const B: BitCountType, const S: usize> From<Wire<{ B }, { S }>> for u128
+where
+    Wire<{ B }, { S }>: FitsInU128,
 {
     fn from(wire: Wire<{ B }, { S }>) -> Self {
         let (bytes, _) = wire.repr.split_at(core::mem::size_of::<Self>());

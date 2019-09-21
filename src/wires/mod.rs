@@ -9,6 +9,7 @@
 //! unique address).
 
 use core::mem::{size_of, MaybeUninit};
+use crate::util::ConstU8Arr;
 
 /// The type used to count the number of bits a wire contains.
 ///
@@ -147,6 +148,30 @@ impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
             #![allow(unsafe_code)]
             repr: unsafe { MaybeUninit::zeroed().assume_init() },
         }
+    }
+
+    /// Where S is the number of bytes we have, and U is the number of bytes
+    /// we need, the following makes a slice of the last S bytes of U:
+    ///   `(U - S)..S`
+    ///
+    /// Some examples:
+    ///   S  |  U  | `(U - S)..U`
+    /// --------------------------
+    ///   0  |  1  |     1..1
+    ///   1  |  1  |     0..1
+    ///   0  |  4  |     4..4
+    ///   1  |  4  |     3..4
+    ///   2  |  4  |     2..4
+    ///   3  |  4  |     1..4
+    ///   4  |  4  |     0..4
+    ///   0  |  8  |     8..8
+    ///   8  |  8  |     0..8
+    fn get_bytes</*T: core::marker::Sized, */const U: usize>(&self) -> [u8; U] {
+        // let mut bytes = [0u8; core::mem::size_of::<T>()];
+        let mut bytes = ConstU8Arr::<{U}>::new();
+
+        bytes[(U-S)..U].copy_from_slice(&self.repr);
+        *bytes
     }
 
     // fn new_with_inference() -> Self
