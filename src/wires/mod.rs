@@ -87,7 +87,8 @@ const fn num_bytes(bits: BitCountType) -> usize {
     //     .unwrap()
     // ```
     // But we can't since checked operations are not yet const functions. As
-    // mentioned the add is the only potentially problematic 
+    // mentioned the add is the only potentially problematic operation but only
+    // within extremely unlikely scenarios (very very large Wires).
     ((bits as usize) + 7) / 8
 }
 
@@ -142,7 +143,8 @@ type WireAlias<const B: BitCountType> = Wire<{B}, {num_bytes(B)}>;
 impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
     fn new() -> Self {
         Wire {
-            // 0s for our u8 slices are a valid initialized state and not UB.
+            // 0s for our u8 arrays are a valid initialized state and not UB.
+            #![allow(unsafe_code)]
             repr: unsafe { MaybeUninit::zeroed().assume_init() },
         }
     }

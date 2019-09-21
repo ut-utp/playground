@@ -1,5 +1,4 @@
-use super::{Op, OpKind, OpGraphNode};
-use core::marker::PhantomData;
+use super::{Op, OpKind};
 
 #[derive(Copy, Clone, Debug)]
 pub struct OpWrapper<T: Op>(T);

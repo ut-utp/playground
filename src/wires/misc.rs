@@ -6,7 +6,7 @@ use core::convert::TryInto;
 
 type BitCountType = u32;
 
-const_assert!(label; std::mem::size_of::<usize>() >= std::mem::size_of::<BitCountType>());
+const_assert!(label; core::mem::size_of::<usize>() >= core::mem::size_of::<BitCountType>());
 
 // const fn num_bytes(b: BitCountType) -> usize {
 //     // let bits: usize = ;
