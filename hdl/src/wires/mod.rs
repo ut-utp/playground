@@ -8,7 +8,12 @@
 //! aligned -- depending on the architecture -- so that each element has a
 //! unique address).
 
+mod conversions;
+
 use core::mem::{size_of, MaybeUninit};
+
+use conversions::IntoBits;
+use core::convert::TryInto;
 use crate::util::ConstU8Arr;
 
 /// The type used to count the number of bits a wire contains.
@@ -123,7 +128,7 @@ const fn byte_and_offset(bit: BitCountType) -> (usize, usize) {
     ((bit as usize) / 8, (bit as usize) % 8)
 }
 
-struct Wire<const B: BitCountType, const S: usize> {
+pub struct Wire<const B: BitCountType, const S: usize> {
     repr: [u8; S],
     // repr: [u8; (B as usize + 7) / 8],
 }
@@ -142,12 +147,42 @@ type WireAlias<const B: BitCountType> = Wire<{B}, {num_bytes(B)}>;
 // }
 
 impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
-    fn new() -> Self {
+    #[inline]
+    pub fn new() -> Self {
         Wire {
             // 0s for our u8 arrays are a valid initialized state and not UB.
             #![allow(unsafe_code)]
             repr: unsafe { MaybeUninit::zeroed().assume_init() },
         }
+    }
+
+    #[inline]
+    pub fn new_with_val<C: IntoBits>(val: C) -> Self {
+        let mut wire = Self::new();
+        wire.set(val);
+
+        wire
+    }
+
+    #[inline]
+    pub fn set<C: IntoBits>(&mut self, val: C) -> &Self {
+        // Make sure we've got enough bytes to represent the value:
+        debug_assert!(S >= C::BYTES);
+
+        // Check that the value we're trying to represent fits in the number of
+        // bits we've got:
+        debug_assert!(B >=
+            ((<usize as TryInto<BitCountType>>::try_into(C::BYTES).unwrap() * 8)
+             - (val.num_leading_zeros()))
+        );
+        // debug_assert!(B >= ((C::BYTES * 8) - (val.num_leading_zeros().try_into().unwrap())));
+        // debug_assert!(B >= ((C::BYTES * 8) - (val.num_leading_zeros().try_into().unwrap())));
+        // debug_assert!(S >= C::BYTES);
+
+        let bytes = val.le_bytes();
+        self.repr.copy_from_slice(&bytes[0..S]);
+
+        self
     }
 
     /// Where S is the number of bytes we have, and U is the number of bytes

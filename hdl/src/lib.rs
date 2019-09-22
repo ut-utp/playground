@@ -2,6 +2,8 @@
 #![allow(incomplete_features)]
 #![feature(const_generics/*, maybe_uninit_slice*/)]
 #![feature(const_fn)]
+// #![feature(slice_index_methods)]
+// #![feature(generic_associated_types)]
 
 #![no_std]
 
@@ -78,8 +80,8 @@ extern crate static_assertions;
 // let f: Or<Add<Zext<Xor<Imm<Output = [Bit; 4]>, Imm<Output = [Bit; 4]>, Output = [Bit; 4]>, Output = [Bit; 8]>, Zext<Imm<Output = [Bit; 4]>, Output = [Bit; 8]>>, Imm<Output = [Bit; 8]> = (zext::<8>(a ^ b) + zext::<8>(c)) | d;
 
 mod util;
-mod ops;
-mod wires;
+pub mod ops;
+pub mod wires;
 
 // use core::cell::RefCell;
 // use core::cell::Cell;

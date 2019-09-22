@@ -1,4 +1,4 @@
-use super::{Op, OpKind, OpGraphNode, OpWrapper};
+use super::{Op, OpKind, OpWrapper};
 
 use core::fmt::Display;
 
