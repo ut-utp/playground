@@ -149,6 +149,9 @@ pub struct Wire<const B: BitCountType, const S: usize> {
 impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
     #[inline]
     pub fn new() -> Self {
+        // Make sure our number of bytes matches our number of bits:
+        debug_assert!(S == num_bytes(B));
+
         Wire {
             // 0s for our u8 arrays are a valid initialized state and not UB.
             #![allow(unsafe_code)]
@@ -169,13 +172,20 @@ impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
         wire
     }
 
+    /// Set the value of a wire.
+    ///
+    /// Currently, only unsigned types are accepted.
+    ///
+    /// For a wire with B bits, we can use values occupying [0, B] bits. If a
+    /// value occupying more bits than the wire has is provided this will panic
+    /// but _only in debug mode_. If a value has fewer bits than a wire, the
+    /// remaining bits will be set to 0.
     #[inline]
     pub fn set<C: IntoBits>(&mut self, val: C) -> &Self {
-        // Make sure our number of bytes matches our number of bits:
-        debug_assert!(S == num_bytes(B));
-
         // Check that the value we're trying to represent fits in the number of
         // bits we've got:
+        // N.B. checking the number of leading zeros is a valid way to know how
+        // many bits `val` requires since we only accept unsigned types.
         debug_assert!(B >=
             ((<usize as TryInto<BitCountType>>::try_into(C::BYTES).unwrap() * 8)
              - (val.num_leading_zeros()))
@@ -184,8 +194,25 @@ impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
         // debug_assert!(B >= ((C::BYTES * 8) - (val.num_leading_zeros().try_into().unwrap())));
         // debug_assert!(S >= C::BYTES);
 
-        let bytes = val.le_bytes();
-        self.repr.copy_from_slice(&bytes[0..S]);
+        // We have some cases:
+        //   - S == C::BYTES: nice and easy; just copy S bytes into `repr`
+        //   - S  < C::BYTES, but B >= (C::BYTES * 8) - val.num_leading_zeros():
+        //                    This ends up being the same as the first case; we
+        //                    just copy the first S bytes over since we've made
+        //                    sure that the rest of the bytes are all zero.
+        //   - S  > C::BYTES: copy 0..C::BYTES into `repr` and zero C::BYTES..S
+
+        // To make life simpler, we'll just always copy Z bytes and zero Z..S
+        // where Z = S in the first and second case and Z = C::BYTES in the
+        // third case.
+
+        // This doesn't currently compile (and Ord::min isn't yet a const fn).
+        // const Z: usize = { if C::BYTES >= S { S } else { C::BYTES } };
+
+        let z: usize = C::BYTES.min(S);
+
+        self.repr[0..z].copy_from_slice(&val.le_bytes()[0..z]);
+        (z..S).for_each(|i| self.repr[i] = 0);
 
         self
     }
@@ -254,7 +281,12 @@ mod tests {
 
     #[test]
     fn new_with_val() {
-        new_wire_with_val!(0, 0usize);
+        new_wire_with_val!(0, 0u8);
+        new_wire_with_val!(1, 1u8);
+        new_wire_with_val!(1, 1u16);
+        new_wire_with_val!(1, 1u32);
+        new_wire_with_val!(1, 1u64);
+        new_wire_with_val!(1, 1u128);
         new_wire_with_val!(1, 1usize);
         new_wire_with_val!(2, 2usize);
         new_wire_with_val!(2, 3usize);
@@ -265,19 +297,89 @@ mod tests {
     }
 
     #[test]
+    fn max_val_testing() {
+        new_wire_with_val!(1, 1usize);
+
+        macro_rules! max_test {
+            ($type:ty, $max:expr) => {
+                new_wire_with_val!((8 * core::mem::size_of::<$type>()) as BitCountType, $max);
+            };
+        }
+
+        max_test!(u8, core::u8::MAX);
+        max_test!(u16, core::u16::MAX);
+        max_test!(u32, core::u32::MAX);
+        max_test!(u64, core::u64::MAX);
+        max_test!(u128, core::u128::MAX);
+        max_test!(usize, core::usize::MAX);
+    }
+
+    #[test]
+    fn big() {
+        new_wire_with_val!(256, 0u8);
+        new_wire_with_val!(256, 0u16);
+        new_wire_with_val!(256, 0u32);
+        new_wire_with_val!(256, 0u64);
+        new_wire_with_val!(256, 0u128);
+        new_wire_with_val!(256, 0usize);
+        new_wire_with_val!(256, core::u8::MAX);
+        new_wire_with_val!(256, core::u16::MAX);
+        new_wire_with_val!(256, core::u32::MAX);
+        new_wire_with_val!(256, core::u64::MAX);
+        new_wire_with_val!(256, core::u128::MAX);
+        new_wire_with_val!(256, core::usize::MAX);
+    }
+
+    #[test]
+    // This will probably fail since we'd be trying to put a ~512 MB array on
+    // the stack ((2 ^ 32) bits / 8 bits to a byte -> 512 MB) so we'll ignore
+    // this test:
+    #[ignore]
+    fn huge() {
+        new_wire_with_val!(core::u32::MAX, 0usize);
+        new_wire_with_val!(core::u32::MAX, 1usize);
+        new_wire_with_val!(core::u32::MAX, core::u8::MAX);
+        new_wire_with_val!(core::u32::MAX, core::u16::MAX);
+        new_wire_with_val!(core::u32::MAX, core::u32::MAX);
+        new_wire_with_val!(core::u32::MAX, core::u64::MAX);
+        new_wire_with_val!(core::u32::MAX, core::u128::MAX);
+        new_wire_with_val!(core::u32::MAX, core::usize::MAX);
+    }
+
+    #[test]
     #[should_panic]
-    fn not_enough_bits_1() {
+    fn val_with_too_many_bits_1() {
         new_wire_with_val!(0, 1usize);
     }
 
     #[test]
     #[should_panic]
-    fn not_enough_bits_2() {
+    fn val_with_too_many_bits_2() {
         new_wire_with_val!(4, 16usize);
     }
 
-    // #[test]
-    // fn new_alias() {
-    //     WireAlias::<{1}>::new();
-    // }
+    #[test]
+    fn val_with_fewer_bits() {
+        new_wire_with_val!(16, 16u8);
+    }
+
+    #[test]
+    fn fewer_bytes_but_enough_bits() {
+        // A wire with 42 bits should have 6 bytes.
+        assert_eq!(size_of::<Wire::<{42}, {num_bytes(42)}>>(), 6);
+
+        // This tests that we're actually checking the number of bits in our
+        // bounds checks and not the number of bytes of the given type. A `u64`
+        // will have 8 bytes which would fail a byte size check (6 bytes for a
+        // 42 bit wire as above), but checking the number of bits for the value
+        // should reveal that the value can indeed (just barely) fit in 42 bits.
+        new_wire_with_val!(42, 4398046511103u64); // 2 ^ 42 - 1
+    }
+
+    #[test]
+    #[should_panic]
+    fn fewer_bytes_and_too_many_bits() {
+        // Same test as above but right above the boundary (should panic).
+        new_wire_with_val!(42, 4398046511103u64 + 1u64); // 2 ^ 42
+    }
 }
