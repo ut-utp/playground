@@ -68,7 +68,7 @@ const_assert!(redundant_check; core::usize::MAX >= BIT_COUNT_MAX as usize / 8);
 ///    9  |   2
 ///
 /// Equivalently, add 7 and divide by 8 (truncating or flooring).
-const fn num_bytes(bits: BitCountType) -> usize {
+pub const fn num_bytes(bits: BitCountType) -> usize {
     //! To be thorough, we'll try to use checked operations even though the only
     //! real danger is the add operation potentially overflowing.
     // Hopefully these will be stripped out in most cases, but this needs to be
@@ -250,10 +250,11 @@ impl<const B: BitCountType, const S: usize> Wire<{ B }, { S }> {
     // fn new_with_inference() -> Self
 }
 
+#[doc(hidden)]
 #[macro_export(crate)]
 macro_rules! new_wire {
     ($bits:expr) => {
-        Wire::<{ $bits }, { num_bytes($bits) }>::new()
+        Wire::<{ $bits }, { $crate::wires::num_bytes($bits) }>::new()
     };
 }
 
@@ -264,11 +265,12 @@ macro_rules! new_wire {
 //     ($bits:expr, $val:expr) => {Wire::<{ $bits }, { num_bytes($bits) }>::new_with_val($val)};
 // }
 
+#[doc(hidden)]
 #[macro_export(crate)]
 macro_rules! new_wire_with_val {
     ($bits:expr, $val:expr) => {
         {
-            let mut w = crate::new_wire!($bits);
+            let mut w = $crate::new_wire!($bits);
             w.set($val);
 
             w

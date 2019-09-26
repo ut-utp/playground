@@ -468,8 +468,6 @@ mod tests {
 
         val_test!(128, core::u128::MIN);
         val_test!(128, core::u128::MAX);
-
-        // assert_eq!(core::u32::MAX, new_wire_with_val!(32, core::u32::MAX).into());
     }
 
 }

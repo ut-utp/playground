@@ -19,7 +19,7 @@ fn spanned_err(span: Span, msg: impl Into<String>) -> proc_macro::TokenStream {
 /// Use like: `repeat!(num, <tokens to repeat>)` where num is a positive integer literal
 /// and is followed by a comma and a non-zero number of tokens to repeat.
 ///
-/// Based pretty heavily on this: https://stackoverflow.com/a/54351072/3006245
+/// Based pretty heavily on [this](https://stackoverflow.com/a/54351072/3006245).
 ///
 /// ```rust,compile_fail
 /// # #[macro_use] extern crate repeat_macros;
