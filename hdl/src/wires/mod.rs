@@ -12,9 +12,9 @@ mod conversions;
 
 use core::mem::{size_of, MaybeUninit};
 
+use crate::util::ConstU8Arr;
 use conversions::IntoBits;
 use core::convert::TryInto;
-use crate::util::ConstU8Arr;
 
 /// The type used to count the number of bits a wire contains.
 ///
@@ -67,10 +67,10 @@ const_assert!(redundant_check; core::usize::MAX >= BIT_COUNT_MAX as usize / 8);
 ///    8  |   1
 ///    9  |   2
 ///
-/// Equivalently, add 7 and divide by 8 (truncating or flooring):
+/// Equivalently, add 7 and divide by 8 (truncating or flooring).
 const fn num_bytes(bits: BitCountType) -> usize {
-    //! To be thorough, we'll use checked operations even though the only real
-    //! danger is the add potentially overflowing.
+    //! To be thorough, we'll try to use checked operations even though the only
+    //! real danger is the add operation potentially overflowing.
     // Hopefully these will be stripped out in most cases, but this needs to be
     // tested (TODO).
     //
@@ -128,6 +128,7 @@ const fn byte_and_offset(bit: BitCountType) -> (usize, usize) {
     ((bit as usize) / 8, (bit as usize) % 8)
 }
 
+#[derive(Copy, Clone)]
 pub struct Wire<const B: BitCountType, const S: usize> {
     repr: [u8; S],
     // repr: [u8; (B as usize + 7) / 8],
@@ -146,15 +147,15 @@ pub struct Wire<const B: BitCountType, const S: usize> {
 //     Wire::<{ uno }, { dos }>::new()
 // }
 
-impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
+impl<const B: BitCountType, const S: usize> Wire<{ B }, { S }> {
     #[inline]
     pub fn new() -> Self {
         // Make sure our number of bytes matches our number of bits:
         debug_assert!(S == num_bytes(B));
 
         Wire {
-            // 0s for our u8 arrays are a valid initialized state and not UB.
             #![allow(unsafe_code)]
+            // 0s for our u8 arrays are a valid initialized state and not UB.
             repr: unsafe { MaybeUninit::zeroed().assume_init() },
         }
     }
@@ -181,14 +182,14 @@ impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
     /// but _only in debug mode_. If a value has fewer bits than a wire, the
     /// remaining bits will be set to 0.
     #[inline]
-    pub fn set<C: IntoBits>(&mut self, val: C) -> &Self {
+    pub fn set<C: IntoBits>(&mut self, val: C) -> &mut Self {
         // Check that the value we're trying to represent fits in the number of
         // bits we've got:
         // N.B. checking the number of leading zeros is a valid way to know how
         // many bits `val` requires since we only accept unsigned types.
-        debug_assert!(B >=
-            ((<usize as TryInto<BitCountType>>::try_into(C::BYTES).unwrap() * 8)
-             - (val.num_leading_zeros()))
+        debug_assert!(
+            B >= ((<usize as TryInto<BitCountType>>::try_into(C::BYTES).unwrap() * 8)
+                - (val.num_leading_zeros()))
         );
         // debug_assert!(B >= ((C::BYTES * 8) - (val.num_leading_zeros().try_into().unwrap())));
         // debug_assert!(B >= ((C::BYTES * 8) - (val.num_leading_zeros().try_into().unwrap())));
@@ -238,35 +239,46 @@ impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
     // invoked). We found a workaround that we're using for now, but we'll still leave
     // this function in in-case this works once const generics become more stable.
     #[allow(unused)]
-    fn get_bytes</*T: core::marker::Sized, */const U: usize>(&self) -> [u8; U] {
+    fn get_bytes<const U: usize>(&self) -> [u8; U] {
         // let mut bytes = [0u8; core::mem::size_of::<T>()];
-        let mut bytes = ConstU8Arr::<{U}>::new();
+        let mut bytes = ConstU8Arr::<{ U }>::new();
 
-        bytes[(U-S)..U].copy_from_slice(&self.repr);
+        bytes[(U - S)..U].copy_from_slice(&self.repr);
         *bytes
     }
 
     // fn new_with_inference() -> Self
 }
 
+#[macro_export(crate)]
+macro_rules! new_wire {
+    ($bits:expr) => {
+        Wire::<{ $bits }, { num_bytes($bits) }>::new()
+    };
+}
+
+// For some reason this fails to compile:
+// Update: it's because calls to `Wire::new_with_val` fail to compile (just like
+// `Wire::get_bytes`). The below works so we'll use it.
+// macro_rules! new_wire_with_val {
+//     ($bits:expr, $val:expr) => {Wire::<{ $bits }, { num_bytes($bits) }>::new_with_val($val)};
+// }
+
+#[macro_export(crate)]
+macro_rules! new_wire_with_val {
+    ($bits:expr, $val:expr) => {
+        {
+            let mut w = crate::new_wire!($bits);
+            w.set($val);
+
+            w
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    macro_rules! new_wire {
-        ($bits:expr) => {Wire::<{ $bits }, { num_bytes($bits) }>::new()};
-    }
-
-    // For some reason this fails to compile:
-    // Update: it's because calls to `Wire::new_with_val` fail to compile (just like
-    // `Wire::get_bytes`). The below works so we'll use it.
-    // macro_rules! new_wire_with_val {
-    //     ($bits:expr, $val:expr) => {Wire::<{ $bits }, { num_bytes($bits) }>::new_with_val($val)};
-    // }
-
-    macro_rules! new_wire_with_val {
-        ($bits:expr, $val:expr) => {new_wire!($bits).set($val)};
-    }
 
     #[test]
     fn new() {
@@ -302,7 +314,7 @@ mod tests {
 
         macro_rules! max_test {
             ($type:ty, $max:expr) => {
-                new_wire_with_val!((8 * core::mem::size_of::<$type>()) as BitCountType, $max);
+                new_wire_with_val!((8 * size_of::<$type>()) as BitCountType, $max);
             };
         }
 
@@ -366,7 +378,7 @@ mod tests {
     #[test]
     fn fewer_bytes_but_enough_bits() {
         // A wire with 42 bits should have 6 bytes.
-        assert_eq!(size_of::<Wire::<{42}, {num_bytes(42)}>>(), 6);
+        assert_eq!(size_of::<Wire::<{ 42 }, { num_bytes(42) }>>(), 6);
 
         // This tests that we're actually checking the number of bits in our
         // bounds checks and not the number of bytes of the given type. A `u64`

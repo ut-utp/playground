@@ -175,14 +175,29 @@ macro_rules! into_bits_impl {
 }
 
 macro_rules! impl_for_size {
-    ($type:ty, $marker_trait:path, $nom:expr) => {
-        #[doc = "Wires with 0 to 8 bits (0 to 1 bytes) can be represented by a `"]
+    // ($type:ty, $marker_trait:path, $nom:expr, $mod_name:ident) => {
+    ($type:ty, $marker_trait:path, $nom:expr, $mod_name:ident) => {
+        // mod $mod_name {
+        //     const BITS: usize = core::mem::size_of::<$type>() * 8;
+        //     const BYTES: usize = core::mem::size_of::<$type>();
+        // }
+
+        // #[doc = "Wires with 0 to "]
+        // #[doc = $mod_name::BITS]
+        // #[doc = " bits (0 to "]
+        // #[doc = $mod_name::BYTES]
+        // #[doc = " bytes) can be represented by a `"]
+        // #[doc = $nom]
+        // #[doc = "`."]
+        #[doc = "Wires with 0 to B bits (0 to S bytes) can be represented by a `"]
         #[doc = $nom]
         #[doc = "`."]
         impl<const B: BitCountType, const S: usize> From<Wire<{ B }, { S }>> for $type
         where
             Wire<{ B }, { S }>: $marker_trait,
         {
+            // Any impl of this within the `hdl` crate should use trait marker bounds so
+            // that S >= size_of::<$type>.
             fn from(wire: Wire<{ B }, { S }>) -> Self {
                 // This causes an ICE:
                 // let _bytes = wire.get_bytes::<{core::mem::size_of::<Self>()}>();
@@ -191,7 +206,9 @@ macro_rules! impl_for_size {
                 const SIZE: usize = core::mem::size_of::<$type>();
                 let mut bytes = crate::util::ConstU8Arr::<{SIZE}>::new();
 
-                bytes[(SIZE - S)..SIZE].copy_from_slice(&wire.repr);
+                // This is wrong! We're little endian!
+                // bytes[(SIZE - S)..SIZE].copy_from_slice(&wire.repr);
+                bytes[0..S].copy_from_slice(&wire.repr);
 
                 // There currently doesn't seem to be a way to get the typechecker to
                 // understand that a const generic value is the same as another constant
@@ -206,11 +223,28 @@ macro_rules! impl_for_size {
             }
         }
 
+        #[doc = "Wires with 0 to B bits (0 to S bytes) can be represented by a `"]
+        #[doc = $nom]
+        #[doc = "`."]
+        impl<const B: BitCountType, const S: usize> From<&Wire<{ B }, { S }>> for $type
+        where
+            Wire<{ B }, { S }>: $marker_trait,
+        {
+            fn from(wire: &Wire<{ B }, { S }>) -> Self {
+                const SIZE: usize = core::mem::size_of::<$type>();
+                let mut bytes = crate::util::ConstU8Arr::<{SIZE}>::new();
+
+                bytes[(SIZE - S)..SIZE].copy_from_slice(&wire.repr);
+
+                Self::from_le_bytes(*bytes)
+            }
+        }
+
         into_bits_impl!($type);
     };
 
-    ($type:ty, $marker_trait:path) => {
-        impl_for_size!($type, $marker_trait, stringify!($type));
+    ($id:ident, $type:ty, $marker_trait:path) => {
+        impl_for_size!($type, $marker_trait, stringify!($type), $id);
     }
 }
 
@@ -274,11 +308,11 @@ pub trait IntoBits/*: NumBytes where Self: NumBytes*/ {
 // impl_for_size!(u64, FitsInU64, IntoBits::U64);
 // impl_for_size!(u128, FitsInU128, IntoBits::U128);
 
-impl_for_size!(u8, FitsInU8);
-impl_for_size!(u16, FitsInU16);
-impl_for_size!(u32, FitsInU32);
-impl_for_size!(u64, FitsInU64);
-impl_for_size!(u128, FitsInU128);
+impl_for_size!(_u8, u8, FitsInU8);
+impl_for_size!(_u16, u16, FitsInU16);
+impl_for_size!(_u32, u32, FitsInU32);
+impl_for_size!(_u64, u64, FitsInU64);
+impl_for_size!(_u128, u128, FitsInU128);
 
 into_bits_impl!(usize);
 
@@ -354,3 +388,88 @@ into_bits_impl!(usize);
 // impl FitsInU128 for Wire<{1}, {num_bytes(2)}> {
 
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::new_wire_with_val;
+
+    #[test]
+    fn u8_to_8b_roundtrip() {
+        for val in core::u8::MIN..=core::u8::MAX {
+            let w = new_wire_with_val!(8, val);
+            assert_eq!(val, w.into());
+        }
+    }
+
+    #[test]
+    fn u8_to_17b_roundtrip() {
+        for val in core::u8::MIN..=core::u8::MAX {
+            let w = new_wire_with_val!(17, val);
+            assert_eq!(val as u32, w.into());
+        }
+    }
+
+    #[test]
+    fn u8_to_47b_roundtrip() {
+        for val in core::u8::MIN..=core::u8::MAX {
+            let w = new_wire_with_val!(47, val);
+            assert_eq!(val as u64, w.into());
+        }
+    }
+
+    #[test]
+    fn u16_to_8b_roundtrip() {
+        for val in core::u16::MIN..=(core::u8::MAX as u16) {
+            let w = new_wire_with_val!(8, val);
+            let z: u8 = w.into();
+            println!("{}", z);
+            assert_eq!(val, w.into());
+        }
+    }
+
+    #[test]
+    fn u16_to_16b_roundtrip() {
+        for val in core::u16::MIN..=core::u16::MAX {
+            let w = new_wire_with_val!(16, val);
+            assert_eq!(val, w.into());
+        }
+    }
+
+    #[test]
+    fn u16_to_19b_roundtrip() {
+        for val in core::u16::MIN..=core::u16::MAX {
+            let w = new_wire_with_val!(17, val);
+            assert_eq!(val as u32, w.into());
+        }
+    }
+
+    #[test]
+    fn u16_to_98b_roundtrip() {
+        for val in core::u16::MIN..=core::u16::MAX {
+            let w = new_wire_with_val!(98, val);
+            assert_eq!(val as u128, w.into());
+        }
+    }
+
+    #[test]
+    fn other_nums() {
+        macro_rules! val_test {
+            ($bits:literal, $num:expr) => {
+                assert_eq!($num, new_wire_with_val!($bits, $num).into())
+            };
+        }
+
+        val_test!(32, core::u32::MIN);
+        val_test!(32, core::u32::MAX);
+
+        val_test!(64, core::u64::MIN);
+        val_test!(64, core::u64::MAX);
+
+        val_test!(128, core::u128::MIN);
+        val_test!(128, core::u128::MAX);
+
+        // assert_eq!(core::u32::MAX, new_wire_with_val!(32, core::u32::MAX).into());
+    }
+
+}
