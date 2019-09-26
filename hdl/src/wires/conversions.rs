@@ -150,6 +150,30 @@ repeat_with_n!(8, N, single_impl! {N, FitsInU8});
 //     }
 // }
 
+macro_rules! into_bits_impl {
+    ($type:ty) => {
+        impl IntoBits for $type {
+            const BYTES: usize = core::mem::size_of::<Self>();
+            // type ByteArr = [u8; core::mem::size_of::<Self>()];
+
+            // fn to_le_bytes(&self) -> [u8; Self::BYTES as usize] {
+            // fn to_le_bytes(&self) -> Self::ByteArr {
+            //     self.to_le_bytes()
+            // }
+
+            #[inline]
+            fn le_bytes(&self) -> Box<[u8]> {
+                Box::new(self.to_le_bytes())
+            }
+
+            #[inline]
+            fn num_leading_zeros(&self) -> u32 {
+                self.leading_zeros()
+            }
+        }
+    };
+}
+
 macro_rules! impl_for_size {
     ($type:ty, $marker_trait:path, $nom:expr) => {
         #[doc = "Wires with 0 to 8 bits (0 to 1 bytes) can be represented by a `"]
@@ -182,25 +206,7 @@ macro_rules! impl_for_size {
             }
         }
 
-        impl IntoBits for $type {
-            const BYTES: usize = core::mem::size_of::<Self>();
-            // type ByteArr = [u8; core::mem::size_of::<Self>()];
-
-            // fn to_le_bytes(&self) -> [u8; Self::BYTES as usize] {
-            // fn to_le_bytes(&self) -> Self::ByteArr {
-            //     self.to_le_bytes()
-            // }
-
-            #[inline]
-            fn le_bytes(&self) -> Box<[u8]> {
-                Box::new(self.to_le_bytes())
-            }
-
-            #[inline]
-            fn num_leading_zeros(&self) -> u32 {
-                self.leading_zeros()
-            }
-        }
+        into_bits_impl!($type);
     };
 
     ($type:ty, $marker_trait:path) => {
@@ -273,6 +279,8 @@ impl_for_size!(u16, FitsInU16);
 impl_for_size!(u32, FitsInU32);
 impl_for_size!(u64, FitsInU64);
 impl_for_size!(u128, FitsInU128);
+
+into_bits_impl!(usize);
 
 // /// Wires with 0 to 8 bits (0 to 1 bytes) can be represented by a u8.
 // impl<const B: BitCountType, const S: usize> From<Wire<{ B }, { S }>> for u8

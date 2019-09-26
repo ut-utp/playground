@@ -134,7 +134,7 @@ pub struct Wire<const B: BitCountType, const S: usize> {
 }
 
 // Doesn't work:
-type WireAlias<const B: BitCountType> = Wire<{B}, {num_bytes(B)}>;
+// type WireAlias<const B: BitCountType> = Wire<{B}, {num_bytes(B)}>;
 
 // Also doesn't work:
 // pub fn new<const B: BitCountType>() -> Wire<{B}, {_}> {
@@ -156,8 +156,13 @@ impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
         }
     }
 
+    // Unfortunately this function doesn't appear to work (ICEs whenever it's actually
+    // invoked like `Wire::get_bytes(&self)`). There's a workaround (calling new and
+    // then set at the call site) but we'll still leave this function in in-case this
+    // works once const generics become more stable.
     #[inline]
-    pub fn new_with_val<C: IntoBits>(val: C) -> Self {
+    #[allow(unused)]
+    fn new_with_val<C: IntoBits>(val: C) -> Self {
         let mut wire = Self::new();
         wire.set(val);
 
@@ -166,8 +171,8 @@ impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
 
     #[inline]
     pub fn set<C: IntoBits>(&mut self, val: C) -> &Self {
-        // Make sure we've got enough bytes to represent the value:
-        debug_assert!(S >= C::BYTES);
+        // Make sure our number of bytes matches our number of bits:
+        debug_assert!(S == num_bytes(B));
 
         // Check that the value we're trying to represent fits in the number of
         // bits we've got:
@@ -201,6 +206,11 @@ impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
     ///   4  |  4  |     0..4
     ///   0  |  8  |     8..8
     ///   8  |  8  |     0..8
+    ///
+    // Unfortunately this function doesn't appear to work (ICEs whenever it's actually
+    // invoked). We found a workaround that we're using for now, but we'll still leave
+    // this function in in-case this works once const generics become more stable.
+    #[allow(unused)]
     fn get_bytes</*T: core::marker::Sized, */const U: usize>(&self) -> [u8; U] {
         // let mut bytes = [0u8; core::mem::size_of::<T>()];
         let mut bytes = ConstU8Arr::<{U}>::new();
@@ -212,16 +222,58 @@ impl<const B: BitCountType, const S: usize> Wire<{B}, {S}> {
     // fn new_with_inference() -> Self
 }
 
-mod conversions;
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    macro_rules! new_wire {
+        ($bits:expr) => {Wire::<{ $bits }, { num_bytes($bits) }>::new()};
+    }
+
+    // For some reason this fails to compile:
+    // Update: it's because calls to `Wire::new_with_val` fail to compile (just like
+    // `Wire::get_bytes`). The below works so we'll use it.
+    // macro_rules! new_wire_with_val {
+    //     ($bits:expr, $val:expr) => {Wire::<{ $bits }, { num_bytes($bits) }>::new_with_val($val)};
+    // }
+
+    macro_rules! new_wire_with_val {
+        ($bits:expr, $val:expr) => {new_wire!($bits).set($val)};
+    }
+
     #[test]
-    fn new_direct() {
-        Wire::<{ 1 }, { 1 }>::new();
-        Wire::<{ 1 }, { num_bytes(1) }>::new();
+    fn new() {
+        new_wire!(0);
+        new_wire!(1);
+    }
+
+    // #[test]
+    // fn new_with_val() {
+    //     new_wire!(1).set(1usize);
+    // }
+
+    #[test]
+    fn new_with_val() {
+        new_wire_with_val!(0, 0usize);
+        new_wire_with_val!(1, 1usize);
+        new_wire_with_val!(2, 2usize);
+        new_wire_with_val!(2, 3usize);
+        new_wire_with_val!(3, 4usize);
+        new_wire_with_val!(4, 15usize);
+        new_wire_with_val!(32, 4_294_967_295usize);
+        new_wire_with_val!(33, 4_294_967_296usize);
+    }
+
+    #[test]
+    #[should_panic]
+    fn not_enough_bits_1() {
+        new_wire_with_val!(0, 1usize);
+    }
+
+    #[test]
+    #[should_panic]
+    fn not_enough_bits_2() {
+        new_wire_with_val!(4, 16usize);
     }
 
     // #[test]
