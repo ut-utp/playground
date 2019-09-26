@@ -24,9 +24,14 @@ use core::convert::TryInto;
 ///
 /// All the same, even though we'll likely never reach this limit, I'd rather
 /// not have it vary per platform which is why we're not just using `usize`
-/// here.
-pub type BitCountType = u32;
-const BIT_COUNT_MAX: BitCountType = core::u32::MAX;
+/// here. Update: we weren't but thanks to const generics limitations we now
+/// are! See the docs on `util::ConstU8Arr` (crate public) for more details.
+pub type BitCountType = usize;
+const BIT_COUNT_MAX: BitCountType = core::usize::MAX;
+
+// TODO: Switch back once const generics are better!
+// pub type BitCountType = u32;
+// const BIT_COUNT_MAX: BitCountType = core::u32::MAX;
 
 // Again, it's unlikely that we'll ever run into this bound, but if we're ever
 // dealing with very large wires it's possible that BitCountType permits a
@@ -189,7 +194,7 @@ impl<const B: BitCountType, const S: usize> Wire<{ B }, { S }> {
         // many bits `val` requires since we only accept unsigned types.
         debug_assert!(
             B >= ((<usize as TryInto<BitCountType>>::try_into(C::BYTES).unwrap() * 8)
-                - (val.num_leading_zeros()))
+                - (<u32 as TryInto<BitCountType>>::try_into(val.num_leading_zeros()).unwrap()))
         );
         // debug_assert!(B >= ((C::BYTES * 8) - (val.num_leading_zeros().try_into().unwrap())));
         // debug_assert!(B >= ((C::BYTES * 8) - (val.num_leading_zeros().try_into().unwrap())));
@@ -345,19 +350,34 @@ mod tests {
     }
 
     #[test]
-    // This will probably fail since we'd be trying to put a ~512 MB array on
-    // the stack ((2 ^ 32) bits / 8 bits to a byte -> 512 MB) so we'll ignore
-    // this test:
+    fn bigger() {
+        new_wire_with_val!(8_192, core::usize::MAX); // 1 KiB on the stack
+    }
+
+    #[test]
+    fn large() {
+        new_wire_with_val!(524_288, core::usize::MAX); // 64 KiB on the stack
+    }
+
+    #[test]
+    fn larger() {
+        new_wire_with_val!(2_097_152, core::usize::MAX); // 256 KiB on the stack
+    }
+
+    #[test]
+    // This will almost certainly fail since we'd be trying to put a ~512 MB
+    // array on the stack ((2 ^ 32) bits / 8 bits to a byte -> 512 MB) so we'll
+    // ignore this test:
     #[ignore]
     fn huge() {
-        new_wire_with_val!(core::u32::MAX, 0usize);
-        new_wire_with_val!(core::u32::MAX, 1usize);
-        new_wire_with_val!(core::u32::MAX, core::u8::MAX);
-        new_wire_with_val!(core::u32::MAX, core::u16::MAX);
-        new_wire_with_val!(core::u32::MAX, core::u32::MAX);
-        new_wire_with_val!(core::u32::MAX, core::u64::MAX);
-        new_wire_with_val!(core::u32::MAX, core::u128::MAX);
-        new_wire_with_val!(core::u32::MAX, core::usize::MAX);
+        new_wire_with_val!(core::u32::MAX as BitCountType, 0usize);
+        new_wire_with_val!(core::u32::MAX as BitCountType, 1usize);
+        new_wire_with_val!(core::u32::MAX as BitCountType, core::u8::MAX);
+        new_wire_with_val!(core::u32::MAX as BitCountType, core::u16::MAX);
+        new_wire_with_val!(core::u32::MAX as BitCountType, core::u32::MAX);
+        new_wire_with_val!(core::u32::MAX as BitCountType, core::u64::MAX);
+        new_wire_with_val!(core::u32::MAX as BitCountType, core::u128::MAX);
+        new_wire_with_val!(core::u32::MAX as BitCountType, core::usize::MAX);
     }
 
     #[test]
