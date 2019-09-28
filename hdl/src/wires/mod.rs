@@ -11,6 +11,7 @@
 mod conversions;
 mod fmt;
 mod index;
+mod macros;
 
 use core::mem::{size_of, MaybeUninit};
 
@@ -255,34 +256,6 @@ impl<const B: BitCountType, const S: usize> Wire<{ B }, { S }> {
     }
 
     // fn new_with_inference() -> Self
-}
-
-#[doc(hidden)]
-#[macro_export(crate)]
-macro_rules! new_wire {
-    ($bits:expr) => {
-        Wire::<{ $bits }, { $crate::wires::num_bytes($bits) }>::new()
-    };
-}
-
-// For some reason this fails to compile:
-// Update: it's because calls to `Wire::new_with_val` fail to compile (just like
-// `Wire::get_bytes`). The below works so we'll use it.
-// macro_rules! new_wire_with_val {
-//     ($bits:expr, $val:expr) => {Wire::<{ $bits }, { num_bytes($bits) }>::new_with_val($val)};
-// }
-
-#[doc(hidden)]
-#[macro_export(crate)]
-macro_rules! new_wire_with_val {
-    ($bits:expr, $val:expr) => {
-        {
-            let mut w = $crate::new_wire!($bits);
-            w.set($val);
-
-            w
-        }
-    };
 }
 
 #[cfg(test)]
