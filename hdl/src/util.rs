@@ -1,5 +1,5 @@
 use core::mem::MaybeUninit;
-use core::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut, Index};
 
 /// A stack backed `u8` array.
 ///
@@ -94,5 +94,19 @@ impl<const SIZE: usize> Deref for ConstU8Arr<{SIZE}> {
 impl<const SIZE: usize> DerefMut for ConstU8Arr<{SIZE}> {
     fn deref_mut(&mut self) -> &mut [u8; SIZE] {
         &mut self.arr
+    }
+}
+
+// impl<const SIZE: usize> Index<usize> for ConstU8Arr<{SIZE}> {
+//     type Output = u8;
+
+//     fn index(&self, idx: usize) -> &u8 {
+//         &self.arr[idx]
+//     }
+// }
+
+impl<const SIZE: usize> AsRef<[u8]> for ConstU8Arr<{SIZE}> {
+    fn as_ref(&self) -> &[u8] {
+        self.deref()
     }
 }

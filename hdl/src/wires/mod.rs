@@ -9,6 +9,7 @@
 //! unique address).
 
 mod conversions;
+mod fmt;
 
 use core::mem::{size_of, MaybeUninit};
 
