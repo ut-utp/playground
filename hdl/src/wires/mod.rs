@@ -159,7 +159,7 @@ impl<const B: BitCountType, const S: usize> Wire<{ B }, { S }> {
     #[inline]
     pub fn new() -> Self {
         // Make sure our number of bytes matches our number of bits:
-        debug_assert!(S == num_bytes(B));
+        debug_assert!(S == num_bytes(B), "An illegal wire!");
 
         Wire {
             #![allow(unsafe_code)]
@@ -168,10 +168,10 @@ impl<const B: BitCountType, const S: usize> Wire<{ B }, { S }> {
         }
     }
 
-    // Unfortunately this function doesn't appear to work (ICEs whenever it's actually
-    // invoked like `Wire::get_bytes(&self)`). There's a workaround (calling new and
-    // then set at the call site) but we'll still leave this function in in-case this
-    // works once const generics become more stable.
+    // Unfortunately this function doesn't appear to work (ICEs whenever it's
+    // actually invoked like `Wire::get_bytes(&self)`). There's a workaround
+    // (calling new and then set at the call site) but we'll still leave this
+    // function in in-case this works once const generics become more stable.
     #[inline]
     #[allow(unused)]
     fn new_with_val<C: IntoBits>(val: C) -> Self {
@@ -196,8 +196,9 @@ impl<const B: BitCountType, const S: usize> Wire<{ B }, { S }> {
         // N.B. checking the number of leading zeros is a valid way to know how
         // many bits `val` requires since we only accept unsigned types.
         debug_assert!(
-            B >= ((<usize as TryInto<BitCountType>>::try_into(C::BYTES).unwrap() * 8)
-                - (<u32 as TryInto<BitCountType>>::try_into(val.num_leading_zeros()).unwrap()))
+            B >= ((<usize as TryInto<BitCountType>>::try_into(C::BYTES).expect("number of bytes in this wire to fit in `BitCountType`") * 8)
+                - (<u32 as TryInto<BitCountType>>::try_into(val.num_leading_zeros()).expect("number of bits in this wire to fit in `BitCountType`"))),
+            format!("{} can't fit in a {} bit wire!", val, B)
         );
         // debug_assert!(B >= ((C::BYTES * 8) - (val.num_leading_zeros().try_into().unwrap())));
         // debug_assert!(B >= ((C::BYTES * 8) - (val.num_leading_zeros().try_into().unwrap())));
@@ -243,9 +244,10 @@ impl<const B: BitCountType, const S: usize> Wire<{ B }, { S }> {
     ///   0  |  8  |     8..8
     ///   8  |  8  |     0..8
     ///
-    // Unfortunately this function doesn't appear to work (ICEs whenever it's actually
-    // invoked). We found a workaround that we're using for now, but we'll still leave
-    // this function in in-case this works once const generics become more stable.
+    // Unfortunately this function doesn't appear to work (ICEs whenever it's
+    // actually invoked). We found a workaround that we're using for now, but
+    // we'll still leave this function in in-case this works once const generics
+    // become more stable.
     #[allow(unused)]
     fn get_bytes<const U: usize>(&self) -> [u8; U] {
         // let mut bytes = [0u8; core::mem::size_of::<T>()];
@@ -388,7 +390,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn fewer_bytes_and_too_many_bits() {
-        // Same test as above but right above the boundary (should panic).
+        // Same test as above but right over the boundary (should panic).
         new_wire_with_val!(42, 4398046511103u64 + 1u64); // 2 ^ 42
     }
 }

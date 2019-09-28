@@ -2,6 +2,7 @@
 //! generics; see: https://github.com/rust-lang/rfcs/issues/1621) we present
 //! this workaround:
 
+use core::fmt::Display;
 use core::ops::IndexMut;
 use core::slice::SliceIndex;
 use core::ops::Range;
@@ -265,7 +266,7 @@ macro_rules! impl_for_size {
 
 // }
 
-pub trait IntoBits/*: NumBytes where Self: NumBytes*/ {
+pub trait IntoBits: Display/*: NumBytes where Self: NumBytes*/ {
     const BYTES: usize;
     // type ByteArr: SliceIndex<usize, Output = u8>;
     // type ByteArr: Index<usize>;
