@@ -10,6 +10,7 @@
 
 mod conversions;
 mod fmt;
+mod index;
 
 use core::mem::{size_of, MaybeUninit};
 
