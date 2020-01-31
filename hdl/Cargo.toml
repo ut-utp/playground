@@ -5,5 +5,5 @@ authors = ["Rahul Butani <rr.butani@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-static_assertions = "0.3.4"
+static_assertions = "1.1.0"
 repeat-macros = { path = "../repeat-macros" }
